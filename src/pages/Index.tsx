@@ -16,6 +16,7 @@ import ChatSidebar from "@/components/ChatSidebar";
 import ChatMessages from "@/components/ChatMessages";
 import ChatInput from "@/components/ChatInput";
 import LanguageSelector from "@/components/LanguageSelector";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Menu, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -108,11 +109,9 @@ const Index = () => {
       }
     }
 
-    // Save and display user message
     const userMsg = await saveMessage(conversationId, "user", input.trim());
     setMessages((prev) => [...prev, userMsg]);
 
-    // Auto-title from first message
     if (messages.length === 0) {
       const title = input.trim().slice(0, 50) + (input.trim().length > 50 ? "..." : "");
       updateConversationTitle(conversationId, title);
@@ -169,7 +168,6 @@ const Index = () => {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Sidebar */}
       <div
         className={`${
           sidebarOpen ? "w-72" : "w-0"
@@ -184,9 +182,7 @@ const Index = () => {
         />
       </div>
 
-      {/* Main chat area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
         <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
           <div className="flex items-center gap-3">
             <Button
@@ -202,19 +198,21 @@ const Index = () => {
               <h1 className="font-display text-lg font-semibold text-foreground">LegalBot</h1>
             </div>
           </div>
-          <LanguageSelector language={language} onChange={(l) => setLanguage(l as Language)} />
+          <div className="flex items-center gap-2">
+            <LanguageSelector language={language} onChange={(l) => setLanguage(l as Language)} />
+            <ThemeToggle />
+          </div>
         </header>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto scrollbar-thin">
           <ChatMessages
             messages={messages}
             isLoading={isLoading}
             messagesEndRef={messagesEndRef}
+            onSuggestionClick={handleSend}
           />
         </div>
 
-        {/* Input */}
         <ChatInput onSend={handleSend} isLoading={isLoading} language={language} />
       </div>
     </div>

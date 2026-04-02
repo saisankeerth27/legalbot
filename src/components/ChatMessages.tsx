@@ -8,6 +8,7 @@ interface ChatMessagesProps {
   messages: Message[];
   isLoading: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement>;
+  onSuggestionClick?: (question: string) => void;
 }
 
 const TypingIndicator = () => (
@@ -19,7 +20,14 @@ const TypingIndicator = () => (
   </div>
 );
 
-const WelcomeScreen = () => (
+const SUGGESTIONS = [
+  "What are my rights if I'm arrested?",
+  "Explain Section 498A IPC",
+  "What is the Consumer Protection Act?",
+  "How to file an RTI application?",
+];
+
+const WelcomeScreen: React.FC<{ onSuggestionClick?: (q: string) => void }> = ({ onSuggestionClick }) => (
   <div className="flex flex-col items-center justify-center h-full text-center px-6">
     <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
       <Scale className="h-8 w-8 text-primary" />
@@ -31,18 +39,14 @@ const WelcomeScreen = () => (
       Ask me anything about Indian laws — IPC, Constitution, Cyber Laws, Consumer Rights, Women Safety Laws, and more.
     </p>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full">
-      {[
-        "What are my rights if I'm arrested?",
-        "Explain Section 498A IPC",
-        "What is the Consumer Protection Act?",
-        "How to file an RTI application?",
-      ].map((q) => (
-        <div
+      {SUGGESTIONS.map((q) => (
+        <button
           key={q}
+          onClick={() => onSuggestionClick?.(q)}
           className="px-4 py-3 rounded-xl border border-border bg-card text-sm text-foreground/80 hover:bg-secondary cursor-pointer transition-colors text-left"
         >
           {q}
-        </div>
+        </button>
       ))}
     </div>
     <p className="text-xs text-muted-foreground mt-8">
@@ -55,9 +59,9 @@ const formatTime = (dateStr: string) => {
   return new Date(dateStr).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
-const ChatMessages: React.FC<ChatMessagesProps> = ({ messages, isLoading, messagesEndRef }) => {
+const ChatMessages: React.FC<ChatMessagesProps> = ({ messages, isLoading, messagesEndRef, onSuggestionClick }) => {
   if (messages.length === 0 && !isLoading) {
-    return <WelcomeScreen />;
+    return <WelcomeScreen onSuggestionClick={onSuggestionClick} />;
   }
 
   const copyToClipboard = (text: string) => {
@@ -82,7 +86,7 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({ messages, isLoading, messag
             }`}
           >
             {msg.role === "assistant" ? (
-              <div className="prose prose-sm prose-invert max-w-none [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-primary [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm">
+              <div className="prose prose-sm dark:prose-invert max-w-none [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-0.5 [&_strong]:text-primary [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm">
                 <ReactMarkdown>{msg.content}</ReactMarkdown>
               </div>
             ) : (
