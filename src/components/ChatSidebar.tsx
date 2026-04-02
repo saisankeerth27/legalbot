@@ -1,8 +1,7 @@
 import React from "react";
-import { Plus, Trash2, MessageSquare } from "lucide-react";
+import { Plus, Trash2, MessageSquare, Scale, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Conversation } from "@/lib/chat-service";
-import { Scale } from "lucide-react";
 
 interface ChatSidebarProps {
   conversations: Conversation[];
@@ -10,6 +9,7 @@ interface ChatSidebarProps {
   onSelect: (convo: Conversation) => void;
   onNewChat: () => void;
   onDelete: (id: string) => void;
+  onClose?: () => void;
 }
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({
@@ -18,13 +18,21 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onSelect,
   onNewChat,
   onDelete,
+  onClose,
 }) => {
   return (
     <div className="h-full flex flex-col bg-sidebar border-r border-sidebar-border">
-      {/* Logo */}
-      <div className="p-4 flex items-center gap-2 border-b border-sidebar-border">
-        <Scale className="h-6 w-6 text-primary" />
-        <span className="font-display text-base font-semibold text-foreground">LegalBot</span>
+      {/* Logo + close button */}
+      <div className="p-4 flex items-center justify-between border-b border-sidebar-border">
+        <div className="flex items-center gap-2">
+          <Scale className="h-6 w-6 text-primary" />
+          <span className="font-display text-base font-semibold text-foreground">LegalBot</span>
+        </div>
+        {onClose && (
+          <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {/* New chat button */}
@@ -45,7 +53,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
         {conversations.map((convo) => (
           <div
             key={convo.id}
-            className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+            className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors active:scale-[0.98] ${
               activeId === convo.id
                 ? "bg-sidebar-accent text-sidebar-accent-foreground"
                 : "text-sidebar-foreground hover:bg-sidebar-accent/50"
@@ -59,7 +67,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 e.stopPropagation();
                 onDelete(convo.id);
               }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/20"
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-destructive/20 touch-manipulation"
             >
               <Trash2 className="h-3.5 w-3.5 text-destructive" />
             </button>
