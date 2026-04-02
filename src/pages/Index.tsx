@@ -202,7 +202,7 @@ const Index = () => {
               <h1 className="font-display text-lg font-semibold text-foreground">LegalBot</h1>
             </div>
           </div>
-          <LanguageSelector language={language} onChange={setLanguage} />
+          <LanguageSelector language={language} onChange={(l) => setLanguage(l as Language)} />
         </header>
 
         {/* Messages */}
