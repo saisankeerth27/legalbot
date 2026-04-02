@@ -19,8 +19,7 @@ import LanguageSelector from "@/components/LanguageSelector";
 import { Menu, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const LANGUAGES = ["English", "Hindi", "Telugu"] as const;
-type Language = (typeof LANGUAGES)[number];
+type Language = "English" | "Hindi" | "Telugu";
 
 const Index = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
