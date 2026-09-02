@@ -2,6 +2,8 @@
 
 AI-powered legal information assistant for Indian law. Ask questions about IPC, Constitution, Cyber Laws, Consumer Rights, Women Safety Laws, and more — get instant, structured answers in English, Hindi, or Telugu.
 
+**Live:** https://galbot-f5cisl5oi-sai-sankeerth.vercel.app
+
 ---
 
 ## Architecture
