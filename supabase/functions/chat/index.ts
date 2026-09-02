@@ -122,9 +122,9 @@ serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     // Check cache for simple queries
@@ -146,22 +146,32 @@ serve(async (req) => {
       systemPrompt += `\n\nIMPORTANT: The user is communicating in ${language}. You MUST respond entirely in ${language}. Keep all legal section numbers, article numbers, act names, and legal terminology in English for accuracy and verifiability. The structural format (headers, bullet points) should remain the same.`;
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        stream: true,
-        temperature: 0.3, // Low temperature for factual accuracy
-      }),
-    });
+    // Build Gemini API request
+    const geminiMessages = [
+      { role: "user", parts: [{ text: systemPrompt + "\n\n---\n\n" }] },
+      { role: "model", parts: [{ text: "I understand. I am LegalBot, ready to help with Indian legal questions." }] },
+      ...messages.map((m: { role: string; content: string }) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      })),
+    ];
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: geminiMessages,
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 2048,
+          },
+        }),
+      }
+    );
 
     if (!response.ok) {
       if (response.status === 429) {
@@ -170,23 +180,49 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Service credits exhausted. Please try again later." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
       const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
+      console.error("Gemini API error:", response.status, t);
       return new Response(JSON.stringify({ error: "AI service error" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // Transform Gemini SSE format to OpenAI-compatible SSE format
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        const decoder = new TextDecoder();
+        const text = decoder.decode(chunk, { stream: true });
+
+        // Parse Gemini SSE events and convert to OpenAI format
+        const lines = text.split("\n");
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr || jsonStr === "[DONE]") continue;
+
+          try {
+            const geminiData = JSON.parse(jsonStr);
+            const content = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (content) {
+              const openaiChunk = JSON.stringify({
+                choices: [{ delta: { content } }],
+              });
+              controller.enqueue(new TextEncoder().encode(`data: ${openaiChunk}\n\n`));
+            }
+          } catch {
+            // Skip malformed JSON
+          }
+        }
+      },
+    });
+
     // If cacheable, tee the stream to capture the full response
     if (cacheKey && response.body) {
       const [streamForClient, streamForCache] = response.body.tee();
+
+      // Transform for client
+      const transformedForClient = streamForClient.pipeThrough(transformStream);
 
       // Collect cache in background
       (async () => {
@@ -201,10 +237,10 @@ serve(async (req) => {
             for (const line of text.split("\n")) {
               if (!line.startsWith("data: ")) continue;
               const jsonStr = line.slice(6).trim();
-              if (jsonStr === "[DONE]") continue;
+              if (!jsonStr || jsonStr === "[DONE]") continue;
               try {
                 const parsed = JSON.parse(jsonStr);
-                const content = parsed.choices?.[0]?.delta?.content;
+                const content = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (content) fullContent += content;
               } catch {}
             }
@@ -215,12 +251,13 @@ serve(async (req) => {
         } catch {}
       })();
 
-      return new Response(streamForClient, {
+      return new Response(transformedForClient, {
         headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
       });
     }
 
-    return new Response(response.body, {
+    const transformedStream = response.body?.pipeThrough(transformStream);
+    return new Response(transformedStream, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
