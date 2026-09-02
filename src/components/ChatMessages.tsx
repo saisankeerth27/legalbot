@@ -12,11 +12,18 @@ interface ChatMessagesProps {
 }
 
 const TypingIndicator = () => (
-  <div className="flex items-center gap-1.5 px-4 py-2">
-    <div className="h-2 w-2 rounded-full bg-primary animate-pulse-dot" />
-    <div className="h-2 w-2 rounded-full bg-primary animate-pulse-dot" style={{ animationDelay: "0.2s" }} />
-    <div className="h-2 w-2 rounded-full bg-primary animate-pulse-dot" style={{ animationDelay: "0.4s" }} />
-    <span className="text-xs text-muted-foreground ml-2">LegalBot is typing...</span>
+  <div className="flex items-start gap-2 sm:gap-3">
+    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 mt-1">
+      <Scale className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
+    </div>
+    <div className="bg-bot-bubble rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3">
+      <div className="flex items-center gap-1.5">
+        <div className="h-2 w-2 rounded-full bg-primary animate-pulse-dot" />
+        <div className="h-2 w-2 rounded-full bg-primary animate-pulse-dot" style={{ animationDelay: "0.2s" }} />
+        <div className="h-2 w-2 rounded-full bg-primary animate-pulse-dot" style={{ animationDelay: "0.4s" }} />
+        <span className="text-xs text-muted-foreground ml-2">LegalBot is thinking...</span>
+      </div>
+    </div>
   </div>
 );
 
@@ -50,7 +57,7 @@ const WelcomeScreen: React.FC<{ onSuggestionClick?: (q: string) => void }> = ({ 
       ))}
     </div>
     <p className="text-[10px] sm:text-xs text-muted-foreground mt-6 sm:mt-8">
-      ⚠️ This is for informational purposes only and does not constitute legal advice.
+      This is for informational purposes only and does not constitute legal advice.
     </p>
   </div>
 );
@@ -94,7 +101,7 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({ messages, isLoading, messag
             )}
             <div className="flex items-center justify-between mt-1.5 sm:mt-2 gap-2">
               <span className="text-[9px] sm:text-[10px] text-muted-foreground">{formatTime(msg.created_at)}</span>
-              {msg.role === "assistant" && (
+              {msg.role === "assistant" && !msg.id.startsWith("streaming-") && (
                 <button
                   onClick={() => copyToClipboard(msg.content)}
                   className="text-muted-foreground hover:text-foreground transition-colors p-1 touch-manipulation"
@@ -111,7 +118,7 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({ messages, isLoading, messag
           )}
         </div>
       ))}
-      {isLoading && messages[messages.length - 1]?.role !== "assistant" && <TypingIndicator />}
+      {isLoading && <TypingIndicator />}
       <div ref={messagesEndRef} />
     </div>
   );

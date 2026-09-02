@@ -76,7 +76,8 @@ export async function saveMessage(conversationId: string, role: "user" | "assist
 }
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
+const GEMINI_MODELS = ["gemini-3.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash"];
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 const LEGAL_SYSTEM_PROMPT = `You are LegalBot, a confident and knowledgeable AI assistant specialized in Indian law. You help citizens understand Indian laws in simple, clear language.
 
@@ -153,6 +154,16 @@ You are knowledgeable about:
 - Be concise but thorough
 - Use markdown formatting with bold headers and bullet points`;
 
+async function tryModel(modelName: string, body: object): Promise<Response> {
+  const url = `${GEMINI_API_BASE}/${modelName}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return resp;
+}
+
 export async function streamChat({
   messages,
   language,
@@ -167,6 +178,11 @@ export async function streamChat({
   onError: (error: string) => void;
 }) {
   try {
+    if (!GEMINI_API_KEY) {
+      onError("Gemini API key is not configured. Please check your .env file.");
+      return;
+    }
+
     let systemPrompt = LEGAL_SYSTEM_PROMPT;
     if (language && language !== "English") {
       systemPrompt += `\n\nIMPORTANT: The user is communicating in ${language}. You MUST respond entirely in ${language}. Keep all legal section numbers, article numbers, act names, and legal terminology in English for accuracy and verifiability. The structural format (headers, bullet points) should remain the same.`;
@@ -181,35 +197,45 @@ export async function streamChat({
       })),
     ];
 
-    const resp = await fetch(GEMINI_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const requestBody = {
+      contents: geminiMessages,
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 2048,
       },
-      body: JSON.stringify({
-        contents: geminiMessages,
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 2048,
-        },
-      }),
-    });
+    };
+
+    let resp: Response | null = null;
+    let lastError = "";
+
+    for (const model of GEMINI_MODELS) {
+      resp = await tryModel(model, requestBody);
+      if (resp.ok) break;
+      lastError = `${model}: ${resp.status}`;
+      resp = null;
+    }
+
+    if (!resp) {
+      onError(`All Gemini models failed. Last error: ${lastError}`);
+      return;
+    }
 
     if (!resp.ok) {
       const errText = await resp.text();
       console.error("Gemini API error:", resp.status, errText);
-      onError(`API error: ${resp.status}`);
+      onError(`API error: ${resp.status}. Please try again.`);
       return;
     }
 
     if (!resp.body) {
-      onError("No response body");
+      onError("No response body from API");
       return;
     }
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let textBuffer = "";
+    let hasContent = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -227,6 +253,10 @@ export async function streamChat({
 
         const jsonStr = line.slice(6).trim();
         if (jsonStr === "[DONE]") {
+          if (!hasContent) {
+            onError("No content received from AI. Please try again.");
+            return;
+          }
           onDone();
           return;
         }
@@ -234,7 +264,10 @@ export async function streamChat({
         try {
           const parsed = JSON.parse(jsonStr);
           const content = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (content) onDelta(content);
+          if (content) {
+            hasContent = true;
+            onDelta(content);
+          }
         } catch {
           textBuffer = line + "\n" + textBuffer;
           break;
@@ -242,8 +275,13 @@ export async function streamChat({
       }
     }
 
-    onDone();
+    if (hasContent) {
+      onDone();
+    } else {
+      onError("No content received from AI. Please try again.");
+    }
   } catch (e) {
-    onError(e instanceof Error ? e.message : "Unknown error");
+    console.error("streamChat error:", e);
+    onError(e instanceof Error ? e.message : "Network error. Please check your connection.");
   }
 }

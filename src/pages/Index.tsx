@@ -29,10 +29,11 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [language, setLanguage] = useState<Language>("English");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const sessionId = useRef(getSessionId());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const loadingRef = useRef(false);
 
-  // Determine breakpoint
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
 
@@ -47,7 +48,6 @@ const Index = () => {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // On desktop, default sidebar open
   useEffect(() => {
     if (!isMobile && !isTablet) {
       setSidebarOpen(true);
@@ -65,8 +65,30 @@ const Index = () => {
   }, [messages, scrollToBottom]);
 
   useEffect(() => {
-    loadConversations();
+    initApp();
   }, []);
+
+  const initApp = async () => {
+    try {
+      const convos = await getConversations(sessionId.current);
+      setConversations(convos);
+      if (convos.length > 0) {
+        setActiveConversationId(convos[0].id);
+        setLanguage(convos[0].language as Language);
+        try {
+          const msgs = await getMessages(convos[0].id);
+          setMessages(msgs);
+        } catch {
+          console.error("Failed to load initial messages");
+        }
+      }
+    } catch (err) {
+      console.error("Failed to initialize:", err);
+      toast.error("Failed to load conversations. Please refresh.");
+    } finally {
+      setIsInitializing(false);
+    }
+  };
 
   const loadConversations = async () => {
     try {
@@ -83,6 +105,7 @@ const Index = () => {
       setMessages(msgs);
     } catch {
       console.error("Failed to load messages");
+      toast.error("Failed to load messages");
     }
   };
 
@@ -90,7 +113,6 @@ const Index = () => {
     setActiveConversationId(convo.id);
     setLanguage(convo.language as Language);
     loadMessages(convo.id);
-    // Close sidebar on mobile after selection
     if (isMobile) setSidebarOpen(false);
   };
 
@@ -120,7 +142,8 @@ const Index = () => {
   };
 
   const handleSend = async (input: string) => {
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || loadingRef.current) return;
+    loadingRef.current = true;
 
     let conversationId = activeConversationId;
 
@@ -132,16 +155,25 @@ const Index = () => {
         setActiveConversationId(convo.id);
       } catch {
         toast.error("Failed to create conversation");
+        loadingRef.current = false;
         return;
       }
     }
 
-    const userMsg = await saveMessage(conversationId, "user", input.trim());
+    let userMsg: Message;
+    try {
+      userMsg = await saveMessage(conversationId, "user", input.trim());
+    } catch {
+      toast.error("Failed to save message");
+      loadingRef.current = false;
+      return;
+    }
+
     setMessages((prev) => [...prev, userMsg]);
 
     if (messages.length === 0) {
       const title = input.trim().slice(0, 50) + (input.trim().length > 50 ? "..." : "");
-      updateConversationTitle(conversationId, title);
+      updateConversationTitle(conversationId, title).catch(() => {});
       setConversations((prev) =>
         prev.map((c) => (c.id === conversationId ? { ...c, title } : c))
       );
@@ -162,7 +194,7 @@ const Index = () => {
         assistantContent += chunk;
         setMessages((prev) => {
           const last = prev[prev.length - 1];
-          if (last?.role === "assistant" && !last.id.startsWith("db-")) {
+          if (last?.role === "assistant" && last.id.startsWith("streaming-")) {
             return prev.map((m, i) =>
               i === prev.length - 1 ? { ...m, content: assistantContent } : m
             );
@@ -180,25 +212,44 @@ const Index = () => {
       },
       onDone: async () => {
         setIsLoading(false);
+        loadingRef.current = false;
         if (assistantContent && conversationId) {
-          const saved = await saveMessage(conversationId, "assistant", assistantContent);
-          setMessages((prev) =>
-            prev.map((m, i) => (i === prev.length - 1 ? { ...saved } : m))
-          );
+          try {
+            const saved = await saveMessage(conversationId, "assistant", assistantContent);
+            setMessages((prev) =>
+              prev.map((m, i) => (i === prev.length - 1 ? { ...saved } : m))
+            );
+          } catch {
+            console.error("Failed to save assistant message");
+          }
         }
       },
       onError: (error) => {
         setIsLoading(false);
+        loadingRef.current = false;
         toast.error(error);
+        setMessages((prev) => prev.filter((m) => !m.id.startsWith("streaming-")));
       },
     });
   };
 
   const showOverlay = sidebarOpen && (isMobile || isTablet);
 
+  if (isInitializing) {
+    return (
+      <div className="flex h-[100dvh] items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center animate-pulse">
+            <Scale className="h-6 w-6 text-primary" />
+          </div>
+          <p className="text-sm text-muted-foreground">Loading LegalBot...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-[100dvh] overflow-hidden relative">
-      {/* Overlay for mobile/tablet */}
       {showOverlay && (
         <div
           className="fixed inset-0 bg-black/50 z-30 transition-opacity duration-300"
@@ -206,7 +257,6 @@ const Index = () => {
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={`
           ${isMobile || isTablet
@@ -232,9 +282,7 @@ const Index = () => {
         </div>
       </aside>
 
-      {/* Main chat area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
         <header className="flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 border-b border-border bg-card flex-shrink-0">
           <div className="flex items-center gap-2 sm:gap-3">
             <Button
@@ -256,7 +304,6 @@ const Index = () => {
           </div>
         </header>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto scrollbar-thin">
           <ChatMessages
             messages={messages}
@@ -266,7 +313,6 @@ const Index = () => {
           />
         </div>
 
-        {/* Input - sticky bottom */}
         <ChatInput onSend={handleSend} isLoading={isLoading} language={language} />
       </div>
     </div>
