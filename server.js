@@ -112,7 +112,7 @@ app.post("/api/chat", async (req, res) => {
       { role: "model", parts: [{ text: "I understand. I am LegalBot, ready to help with Indian legal questions." }] },
       ...messages.map((m) => ({
         role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }],
+        parts: [{ text: m.content || m.parts?.[0]?.text || "" }],
       })),
     ];
 
