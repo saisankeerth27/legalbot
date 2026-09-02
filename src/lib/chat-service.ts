@@ -76,7 +76,7 @@ export async function saveMessage(conversationId: string, role: "user" | "assist
 }
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
 
 const LEGAL_SYSTEM_PROMPT = `You are LegalBot, a confident and knowledgeable AI assistant specialized in Indian law. You help citizens understand Indian laws in simple, clear language.
 
