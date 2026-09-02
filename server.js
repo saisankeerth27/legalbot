@@ -6,13 +6,6 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error("Express error:", err.message);
-  res.status(400).json({ error: "Invalid request format" });
-});
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODELS = ["gemini-3.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash"];
@@ -94,12 +87,13 @@ You are knowledgeable about:
 - Use markdown formatting with bold headers and bullet points`;
 
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", model: GEMINI_MODELS[0] });
+  res.json({ status: "ok", model: GEMINI_MODELS[0], keySet: !!GEMINI_API_KEY });
 });
 
 app.post("/api/chat", async (req, res) => {
   try {
     const { messages, language } = req.body;
+    console.log("Received messages:", messages?.length, "language:", language);
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "Messages array is required" });
@@ -111,7 +105,7 @@ app.post("/api/chat", async (req, res) => {
 
     let systemPrompt = LEGAL_SYSTEM_PROMPT;
     if (language && language !== "English") {
-      systemPrompt += `\n\nIMPORTANT: The user is communicating in ${language}. You MUST respond entirely in ${language}. Keep all legal section numbers, article numbers, act names, and legal terminology in English for accuracy and verifiability. The structural format (headers, bullet points) should remain the same.`;
+      systemPrompt += `\n\nIMPORTANT: The user is communicating in ${language}. You MUST respond entirely in ${language}. Keep all legal section numbers, article numbers, act names, and legal terminology in English for accuracy and verifiability.`;
     }
 
     const geminiMessages = [
@@ -119,16 +113,13 @@ app.post("/api/chat", async (req, res) => {
       { role: "model", parts: [{ text: "I understand. I am LegalBot, ready to help with Indian legal questions." }] },
       ...messages.map((m) => ({
         role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content || m.parts?.[0]?.text || "" }],
+        parts: [{ text: m.content || "" }],
       })),
-    ];
+    };
 
     const requestBody = {
       contents: geminiMessages,
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 2048,
-      },
+      generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
     };
 
     let resp = null;
@@ -140,11 +131,12 @@ app.post("/api/chat", async (req, res) => {
         body: JSON.stringify(requestBody),
       });
       if (resp.ok) break;
+      console.log(`Model ${model} failed:`, resp.status);
       resp = null;
     }
 
     if (!resp) {
-      return res.status(503).json({ error: "AI service temporarily unavailable. Please try again." });
+      return res.status(503).json({ error: "AI service temporarily unavailable" });
     }
 
     if (!resp.ok) {
@@ -163,22 +155,15 @@ app.post("/api/chat", async (req, res) => {
     const pump = async () => {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          res.end();
-          return;
-        }
-        const chunk = decoder.decode(value, { stream: true });
-        res.write(chunk);
+        if (done) { res.end(); return; }
+        res.write(decoder.decode(value, { stream: true }));
       }
     };
 
-    pump().catch((err) => {
-      console.error("Stream error:", err);
-      res.end();
-    });
+    pump().catch((err) => { console.error("Stream error:", err); res.end(); });
   } catch (err) {
     console.error("Chat error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Internal server error: " + err.message });
   }
 });
 
