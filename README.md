@@ -1,73 +1,296 @@
 # LegalBot
 
-AI-powered legal information assistant for Indian law. Get instant answers about IPC, Constitution, Cyber Laws, Consumer Rights, and more.
+AI-powered legal information assistant for Indian law. Ask questions about IPC, Constitution, Cyber Laws, Consumer Rights, Women Safety Laws, and more — get instant, structured answers in English, Hindi, or Telugu.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        BROWSER (Client)                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────┐   ┌──────────────┐   ┌────────────────────────┐  │
+│  │  React   │   │   Gemini     │   │     Supabase Client    │  │
+│  │   App    │──▶│   Streaming  │   │   (REST API for CRUD)  │  │
+│  │          │   │     API      │   │                        │  │
+│  └──────────┘   └──────────────┘   └────────────────────────┘  │
+│       │                                             │           │
+│       ▼                                             ▼           │
+│  ┌─────────────────┐                    ┌────────────────────┐  │
+│  │  LocalStorage    │                    │  Supabase Cloud    │  │
+│  │  - session_id   │                    │  - conversations   │  │
+│  │  - theme        │                    │  - messages        │  │
+│  └─────────────────┘                    └────────────────────┘  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Request Flow
+
+```
+User types message
+        │
+        ▼
+┌───────────────────┐
+│   Save to DB      │──── Supabase INSERT (conversation + message)
+└───────┬───────────┘
+        │
+        ▼
+┌───────────────────┐
+│  Build Gemini     │──── System prompt + language + chat history
+│  Request          │
+└───────┬───────────┘
+        │
+        ▼
+┌───────────────────┐
+│  Stream Response  │──── SSE (Server-Sent Events) chunks
+│  (ReadableStream) │
+└───────┬───────────┘
+        │
+        ▼
+┌───────────────────┐
+│  Render Chunks    │──── ReactMarkdown rendering in real-time
+│  in Chat Bubble   │
+└───────┬───────────┘
+        │
+        ▼
+┌───────────────────┐
+│  Save Complete    │──── Supabase INSERT (assistant message)
+│  Response to DB   │
+└───────────────────┘
+```
+
+---
 
 ## Tech Stack
 
-- **Frontend:** React 18 + TypeScript + Vite
-- **Styling:** Tailwind CSS + shadcn/ui
-- **Backend:** Supabase Edge Functions
-- **AI:** Google Gemini 2.0 Flash
-- **Database:** Supabase (PostgreSQL)
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18 + TypeScript |
+| Build Tool | Vite 5 (SWC) |
+| Styling | Tailwind CSS 3 + shadcn/ui |
+| Routing | React Router v6 |
+| State | TanStack React Query |
+| Database | Supabase (PostgreSQL) |
+| AI | Google Gemini 3.6 Flash |
+| Icons | Lucide React |
+| Toasts | Sonner + Radix Toast |
 
-## Features
-
-- Multi-language support (English, Hindi, Telugu)
-- Dark/light theme toggle
-- Voice input (Web Speech API)
-- Markdown rendering for legal responses
-- Conversation history with Supabase
-- Response caching for common queries
-
-## Setup
-
-### Prerequisites
-
-- Node.js 18+
-- Supabase project
-- Google Gemini API key
-
-### Environment Variables
-
-Create a `.env` file:
-
-```
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
-```
-
-Set in Supabase Edge Function secrets:
-
-```
-GEMINI_API_KEY=your_gemini_api_key
-```
-
-### Install & Run
-
-```bash
-npm install
-npm run dev
-```
-
-### Build
-
-```bash
-npm run build
-```
+---
 
 ## Project Structure
 
 ```
 legalbot/
 ├── src/
-│   ├── components/       # React components
-│   ├── lib/              # Utilities and services
-│   ├── pages/            # Route pages
-│   └── integrations/     # Supabase client
+│   ├── components/
+│   │   ├── ChatInput.tsx          # Text + voice input
+│   │   ├── ChatMessages.tsx       # Message display + markdown
+│   │   ├── ChatSidebar.tsx        # Conversation list
+│   │   ├── LanguageSelector.tsx   # English/Hindi/Telugu
+│   │   ├── ThemeToggle.tsx        # Dark/light mode
+│   │   └── ui/                    # shadcn/ui primitives
+│   │
+│   ├── pages/
+│   │   ├── Index.tsx              # Main chat page (all state)
+│   │   └── NotFound.tsx           # 404 page
+│   │
+│   ├── lib/
+│   │   ├── chat-service.ts        # Supabase CRUD + Gemini streaming
+│   │   └── utils.ts               # cn() utility
+│   │
+│   ├── integrations/supabase/
+│   │   ├── client.ts              # Supabase client init
+│   │   └── types.ts               # Auto-generated DB types
+│   │
+│   ├── hooks/
+│   │   └── use-toast.ts           # Toast state management
+│   │
+│   ├── App.tsx                    # Root + routing
+│   ├── main.tsx                   # Entry point
+│   ├── index.css                  # Theme variables + fonts
+│   └── vite-env.d.ts              # TypeScript declarations
+│
 ├── supabase/
-│   └── functions/        # Edge Functions (AI backend)
-└── public/               # Static assets
+│   ├── config.toml                # Project config
+│   ├── functions/chat/index.ts    # Edge Function (alternative backend)
+│   └── migrations/                # Database schema
+│
+├── public/
+│   └── favicon.svg                # Scales of justice icon
+│
+└── Config Files
+    ├── package.json
+    ├── vite.config.ts
+    ├── tailwind.config.ts
+    ├── tsconfig.json
+    └── eslint.config.js
 ```
+
+---
+
+## Database Schema
+
+### conversations
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `session_id` | TEXT | Browser session identifier |
+| `title` | TEXT | Auto-set from first message |
+| `language` | TEXT | English / Hindi / Telugu |
+| `created_at` | TIMESTAMPTZ | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | Auto-updated on change |
+
+### messages
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `conversation_id` | UUID | FK → conversations (CASCADE delete) |
+| `role` | TEXT | "user" or "assistant" |
+| `content` | TEXT | Message content |
+| `created_at` | TIMESTAMPTZ | Creation timestamp |
+
+---
+
+## Features
+
+- **AI Chat** — Streaming responses from Google Gemini about Indian law
+- **Multi-language** — English, Hindi, Telugu for responses and voice input
+- **Dark/Light Theme** — System-aware with manual toggle
+- **Voice Input** — Web Speech API with language-matched recognition
+- **Persistent History** — All conversations saved to Supabase
+- **Auto-titling** — First message becomes conversation title
+- **Markdown Responses** — Rich formatting with legal structure
+- **Responsive Design** — Mobile, tablet, desktop with sidebar overlay
+- **Copy to Clipboard** — One-click copy on AI responses
+- **Welcome Suggestions** — 4 pre-built legal question cards
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- npm or yarn
+- Supabase account
+- Google Gemini API key
+
+### 1. Clone & Install
+
+```bash
+git clone https://github.com/saisankeerth27/legalbot.git
+cd legalbot
+npm install
+```
+
+### 2. Configure Environment
+
+Create `.env` file:
+
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-anon-key
+VITE_GEMINI_API_KEY=your-gemini-api-key
+```
+
+### 3. Setup Database
+
+Run the migration SQL in Supabase SQL Editor:
+
+```sql
+-- Conversations table
+CREATE TABLE conversations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  title TEXT DEFAULT 'New Chat',
+  language TEXT DEFAULT 'English',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Messages table
+CREATE TABLE messages (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_conversations_session ON conversations(session_id);
+CREATE INDEX idx_messages_conversation ON messages(conversation_id);
+
+-- RLS
+ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public" ON conversations FOR ALL USING (true);
+CREATE POLICY "Public" ON messages FOR ALL USING (true);
+```
+
+### 4. Run
+
+```bash
+npm run dev
+```
+
+Open **http://localhost:8080**
+
+---
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server |
+| `npm run build` | Production build |
+| `npm run preview` | Preview production build |
+| `npm run lint` | Run ESLint |
+| `npm run test` | Run tests |
+
+---
+
+## Environment Variables
+
+| Variable | Description | Client |
+|----------|-------------|--------|
+| `VITE_SUPABASE_URL` | Supabase project URL | Yes |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase anon key | Yes |
+| `VITE_GEMINI_API_KEY` | Google Gemini API key | Yes |
+| `VITE_SUPABASE_PROJECT_ID` | Supabase project ID | Yes |
+
+---
+
+## How It Works
+
+### Chat Streaming
+
+1. User sends message → saved to Supabase
+2. System prompt + chat history sent to Gemini API
+3. Response streams via Server-Sent Events (SSE)
+4. Each chunk rendered in real-time with ReactMarkdown
+5. Complete response saved back to Supabase
+
+### Language Support
+
+- Language selected per-conversation (stored in DB)
+- System prompt appended with language instruction
+- Voice input uses matching language (`en-IN`, `hi-IN`, `te-IN`)
+- Legal terminology kept in English for accuracy
+
+### Theme System
+
+- CSS custom properties for all colors (HSL values)
+- `dark` class toggle on `<html>` element
+- System preference detected on first load
+- Persisted in `localStorage`
+
+---
 
 ## License
 
