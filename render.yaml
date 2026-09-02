@@ -3,7 +3,6 @@ services:
     name: legalbot-api
     runtime: node
     region: oregon
-    rootDir: server
     buildCommand: npm install
     startCommand: node server.js
     envVars:
