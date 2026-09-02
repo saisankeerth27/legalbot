@@ -115,7 +115,7 @@ app.post("/api/chat", async (req, res) => {
         role: m.role === "assistant" ? "model" : "user",
         parts: [{ text: m.content || "" }],
       })),
-    };
+    ];
 
     const requestBody = {
       contents: geminiMessages,
