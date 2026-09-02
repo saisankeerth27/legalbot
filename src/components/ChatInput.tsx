@@ -19,7 +19,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSend, isLoading, language }) =>
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -52,7 +52,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSend, isLoading, language }) =>
   };
 
   const toggleVoice = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       toast.error("Speech recognition is not supported in this browser");
       return;

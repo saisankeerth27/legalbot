@@ -242,13 +242,17 @@ serve(async (req) => {
                 const parsed = JSON.parse(jsonStr);
                 const content = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (content) fullContent += content;
-              } catch {}
+              } catch {
+                // Skip malformed JSON chunks during cache collection
+              }
             }
           }
           if (fullContent) {
             responseCache.set(cacheKey, { response: fullContent, timestamp: Date.now() });
           }
-        } catch {}
+        } catch {
+          // Silently ignore cache collection errors
+        }
       })();
 
       return new Response(transformedForClient, {
