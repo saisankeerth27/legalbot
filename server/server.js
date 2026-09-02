@@ -1,81 +1,15 @@
-import { supabase } from "@/integrations/supabase/client";
+import express from "express";
+import cors from "cors";
 
-export type Message = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  created_at: string;
-};
+const app = express();
+const PORT = process.env.PORT || 3001;
 
-export type Conversation = {
-  id: string;
-  session_id: string;
-  title: string;
-  language: string;
-  created_at: string;
-  updated_at: string;
-};
+app.use(cors());
+app.use(express.json());
 
-export function getSessionId(): string {
-  let sessionId = localStorage.getItem("legalbot_session_id");
-  if (!sessionId) {
-    sessionId = crypto.randomUUID();
-    localStorage.setItem("legalbot_session_id", sessionId);
-  }
-  return sessionId;
-}
-
-export async function getConversations(sessionId: string): Promise<Conversation[]> {
-  const { data, error } = await supabase
-    .from("conversations")
-    .select("*")
-    .eq("session_id", sessionId)
-    .order("updated_at", { ascending: false });
-  if (error) throw error;
-  return data || [];
-}
-
-export async function createConversation(sessionId: string, language: string): Promise<Conversation> {
-  const { data, error } = await supabase
-    .from("conversations")
-    .insert({ session_id: sessionId, language, title: "New Chat" })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function deleteConversation(id: string): Promise<void> {
-  const { error } = await supabase.from("conversations").delete().eq("id", id);
-  if (error) throw error;
-}
-
-export async function updateConversationTitle(id: string, title: string): Promise<void> {
-  const { error } = await supabase.from("conversations").update({ title }).eq("id", id);
-  if (error) throw error;
-}
-
-export async function getMessages(conversationId: string): Promise<Message[]> {
-  const { data, error } = await supabase
-    .from("messages")
-    .select("*")
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return (data || []) as Message[];
-}
-
-export async function saveMessage(conversationId: string, role: "user" | "assistant", content: string): Promise<Message> {
-  const { data, error } = await supabase
-    .from("messages")
-    .insert({ conversation_id: conversationId, role, content })
-    .select()
-    .single();
-  if (error) throw error;
-  return data as Message;
-}
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODELS = ["gemini-3.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash"];
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 const LEGAL_SYSTEM_PROMPT = `You are LegalBot, a confident and knowledgeable AI assistant specialized in Indian law. You help citizens understand Indian laws in simple, clear language.
 
@@ -152,20 +86,22 @@ You are knowledgeable about:
 - Be concise but thorough
 - Use markdown formatting with bold headers and bullet points`;
 
-export async function streamChat({
-  messages,
-  language,
-  onDelta,
-  onDone,
-  onError,
-}: {
-  messages: { role: string; content: string }[];
-  language: string;
-  onDelta: (text: string) => void;
-  onDone: () => void;
-  onError: (error: string) => void;
-}) {
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", model: GEMINI_MODELS[0] });
+});
+
+app.post("/api/chat", async (req, res) => {
   try {
+    const { messages, language } = req.body;
+
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: "Messages array is required" });
+    }
+
+    if (!GEMINI_API_KEY) {
+      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on server" });
+    }
+
     let systemPrompt = LEGAL_SYSTEM_PROMPT;
     if (language && language !== "English") {
       systemPrompt += `\n\nIMPORTANT: The user is communicating in ${language}. You MUST respond entirely in ${language}. Keep all legal section numbers, article numbers, act names, and legal terminology in English for accuracy and verifiability. The structural format (headers, bullet points) should remain the same.`;
@@ -180,73 +116,65 @@ export async function streamChat({
       })),
     ];
 
-    const resp = await fetch(`${API_URL}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: geminiMessages, language }),
-    });
+    const requestBody = {
+      contents: geminiMessages,
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 2048,
+      },
+    };
+
+    let resp = null;
+    for (const model of GEMINI_MODELS) {
+      const url = `${GEMINI_API_BASE}/${model}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
+      resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+      if (resp.ok) break;
+      resp = null;
+    }
+
+    if (!resp) {
+      return res.status(503).json({ error: "AI service temporarily unavailable. Please try again." });
+    }
 
     if (!resp.ok) {
-      const errData = await resp.json().catch(() => ({ error: `Server error: ${resp.status}` }));
-      onError(errData.error || `API error: ${resp.status}`);
-      return;
+      const errText = await resp.text();
+      console.error("Gemini error:", resp.status, errText);
+      return res.status(502).json({ error: "AI service error" });
     }
 
-    if (!resp.body) {
-      onError("No response body");
-      return;
-    }
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
-    let textBuffer = "";
-    let hasContent = false;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      textBuffer += decoder.decode(value, { stream: true });
-
-      let newlineIndex: number;
-      while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
-        let line = textBuffer.slice(0, newlineIndex);
-        textBuffer = textBuffer.slice(newlineIndex + 1);
-
-        if (line.endsWith("\r")) line = line.slice(0, -1);
-        if (line.startsWith(":") || line.trim() === "") continue;
-        if (!line.startsWith("data: ")) continue;
-
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === "[DONE]") {
-          if (!hasContent) {
-            onError("No content received. Please try again.");
-            return;
-          }
-          onDone();
+    const pump = async () => {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          res.end();
           return;
         }
-
-        try {
-          const parsed = JSON.parse(jsonStr);
-          const content = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (content) {
-            hasContent = true;
-            onDelta(content);
-          }
-        } catch {
-          textBuffer = line + "\n" + textBuffer;
-          break;
-        }
+        const chunk = decoder.decode(value, { stream: true });
+        res.write(chunk);
       }
-    }
+    };
 
-    if (hasContent) {
-      onDone();
-    } else {
-      onError("No content received. Please try again.");
-    }
-  } catch (e) {
-    console.error("streamChat error:", e);
-    onError(e instanceof Error ? e.message : "Network error. Please check your connection.");
+    pump().catch((err) => {
+      console.error("Stream error:", err);
+      res.end();
+    });
+  } catch (err) {
+    console.error("Chat error:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
-}
+});
+
+app.listen(PORT, () => {
+  console.log(`LegalBot server running on port ${PORT}`);
+});

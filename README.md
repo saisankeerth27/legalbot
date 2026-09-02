@@ -255,14 +255,60 @@ Open **http://localhost:8080**
 
 ---
 
+## Deployment
+
+### Frontend (Vercel)
+
+1. Push code to GitHub
+2. Go to https://vercel.com → Import Project
+3. Select your GitHub repo
+4. Configure:
+   - **Framework Preset:** Vite
+   - **Build Command:** `npm run build`
+   - **Output Directory:** `dist`
+5. Add Environment Variables:
+   - `VITE_SUPABASE_URL` = your Supabase URL
+   - `VITE_SUPABASE_PUBLISHABLE_KEY` = your anon key
+   - `VITE_API_URL` = your Render backend URL (e.g., `https://legalbot-api.onrender.com`)
+6. Deploy
+
+### Backend (Render)
+
+1. Go to https://render.com → New Web Service
+2. Connect your GitHub repo
+3. Configure:
+   - **Name:** `legalbot-api`
+   - **Root Directory:** `server`
+   - **Runtime:** Node
+   - **Build Command:** `npm install`
+   - **Start Command:** `node server.js`
+4. Add Environment Variable:
+   - `GEMINI_API_KEY` = your Gemini API key
+5. Deploy
+
+### Update Frontend
+
+After backend is deployed, update your Vercel env variable:
+- `VITE_API_URL` = `https://legalbot-api.onrender.com`
+
+---
+
 ## Environment Variables
+
+### Frontend (.env)
 
 | Variable | Description | Client |
 |----------|-------------|--------|
 | `VITE_SUPABASE_URL` | Supabase project URL | Yes |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase anon key | Yes |
-| `VITE_GEMINI_API_KEY` | Google Gemini API key | Yes |
-| `VITE_SUPABASE_PROJECT_ID` | Supabase project ID | Yes |
+| `VITE_API_URL` | Backend API URL | Yes |
+
+### Backend (server/.env)
+
+| Variable | Description | Client |
+|----------|-------------|--------|
+| `GEMINI_API_KEY` | Google Gemini API key | No (server only) |
+| `PORT` | Server port (default: 3001) | No |
 
 ---
 
