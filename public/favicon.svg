@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="6" fill="#F59E0B"/>
+  <g transform="translate(16,4)" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round">
+    <!-- Center post -->
+    <line x1="0" y1="2" x2="0" y2="22"/>
+    <!-- Top beam -->
+    <line x1="-10" y1="6" x2="10" y2="6"/>
+    <!-- Top triangle -->
+    <path d="M-2,2 L0,0 L2,2"/>
+    <!-- Left chain -->
+    <line x1="-10" y1="6" x2="-10" y2="14"/>
+    <!-- Right chain -->
+    <line x1="10" y1="6" x2="10" y2="14"/>
+    <!-- Left pan -->
+    <path d="M-14,14 Q-10,18 -6,14"/>
+    <!-- Right pan -->
+    <path d="M6,14 Q10,18 14,14"/>
+    <!-- Base -->
+    <line x1="-5" y1="22" x2="5" y2="22"/>
+    <line x1="-3" y1="22" x2="-3" y2="24"/>
+    <line x1="3" y1="22" x2="3" y2="24"/>
+    <line x1="-5" y1="24" x2="5" y2="24"/>
+  </g>
+</svg>
